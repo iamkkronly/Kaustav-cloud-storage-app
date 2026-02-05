@@ -51,7 +51,12 @@ class MainActivity : AppCompatActivity() {
         val uploadButton = findViewById<Button>(R.id.uploadButton)
 
         // Initialize Telegram Client
-        TelegramClient.initialize(applicationContext)
+        try {
+            TelegramClient.initialize(applicationContext)
+        } catch (e: Throwable) {
+            e.printStackTrace()
+            Toast.makeText(this, "Init failed: ${e.message}", Toast.LENGTH_LONG).show()
+        }
 
         // Observe Auth State
         lifecycleScope.launch {
