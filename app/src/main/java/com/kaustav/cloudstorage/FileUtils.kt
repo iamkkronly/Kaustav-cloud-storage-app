@@ -3,6 +3,7 @@ package com.kaustav.cloudstorage
 import android.content.ContentResolver
 import android.net.Uri
 import android.provider.OpenableColumns
+import java.io.File
 
 object FileUtils {
     fun displayName(contentResolver: ContentResolver, uri: Uri): String? {
@@ -17,4 +18,11 @@ object FileUtils {
         return null
     }
 
+    fun copyTo(contentResolver: ContentResolver, uri: Uri, destFile: File) {
+        contentResolver.openInputStream(uri)?.use { input ->
+            destFile.outputStream().use { output ->
+                input.copyTo(output)
+            }
+        }
+    }
 }
