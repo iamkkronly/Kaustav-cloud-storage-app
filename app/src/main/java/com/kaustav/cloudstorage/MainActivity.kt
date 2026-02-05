@@ -1,42 +1,13 @@
 package com.kaustav.cloudstorage
 
-<<<<<<< codex/create-android-apk-for-kaustav-cloud-storage-6s1s6r
-import android.os.Bundle
-import android.widget.Button
-import android.widget.TextView
-import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AppCompatActivity
-
-class MainActivity : AppCompatActivity() {
-    private lateinit var statusText: TextView
-    private lateinit var filesList: TextView
-    private var isLoggedIn = false
-    private val uploadedFiles = mutableListOf<String>()
-
-    private val pickFile = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
-            if (!isLoggedIn) {
-                Toast.makeText(
-                    this,
-                    "Login with Telegram to upload files to Saved Messages.",
-                    Toast.LENGTH_LONG
-                ).show()
-                return@registerForActivityResult
-            }
-            val displayName = FileUtils.displayName(contentResolver, uri) ?: "unknown file"
-            uploadedFiles.add(displayName)
-            refreshList()
-            Toast.makeText(
-                this,
-                "Uploading \"$displayName\" to Telegram Saved Messages (demo).",
-                Toast.LENGTH_LONG
-            ).show()
-=======
+import android.app.AlertDialog
 import android.net.Uri
 import android.os.Bundle
+import android.text.InputType
 import android.widget.Button
+import android.widget.EditText
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
@@ -53,18 +24,16 @@ import java.util.Locale
 class MainActivity : AppCompatActivity() {
     private lateinit var database: AppDatabase
     private lateinit var filesList: TextView
+    private lateinit var statusText: TextView
+    private lateinit var loginButton: Button
 
     private val pickFile = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
-            contentResolver.takePersistableUriPermission(
-                uri,
-                IntentFlags.READ
-            )
+            contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
             lifecycleScope.launch {
-                saveFile(uri)
+                saveAndUploadFile(uri)
                 refreshList()
             }
->>>>>>> main
         }
     }
 
@@ -72,62 +41,143 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-<<<<<<< codex/create-android-apk-for-kaustav-cloud-storage-6s1s6r
-        statusText = findViewById(R.id.statusText)
-        filesList = findViewById(R.id.filesList)
-        val loginButton = findViewById<Button>(R.id.loginButton)
-        val uploadButton = findViewById<Button>(R.id.uploadButton)
-
-        loginButton.setOnClickListener {
-            isLoggedIn = true
-            statusText.text = "Status: Connected to Telegram (demo)"
-            Toast.makeText(
-                this,
-                "Telegram login simulated. Uploads will go to Saved Messages.",
-                Toast.LENGTH_LONG
-            ).show()
-        }
-
-=======
         database = Room.databaseBuilder(applicationContext, AppDatabase::class.java, "kaustav.db")
             .fallbackToDestructiveMigration()
             .build()
 
+        statusText = findViewById(R.id.statusText)
         filesList = findViewById(R.id.filesList)
+        loginButton = findViewById(R.id.loginButton)
         val uploadButton = findViewById<Button>(R.id.uploadButton)
 
->>>>>>> main
+        // Initialize Telegram Client
+        TelegramClient.initialize(applicationContext)
+
+        // Observe Auth State
+        lifecycleScope.launch {
+            TelegramClient.authState.collect { state ->
+                when (state) {
+                    is AuthState.Initial -> {
+                        statusText.text = "Status: Initializing..."
+                        loginButton.isEnabled = false
+                    }
+                    is AuthState.WaitPhoneNumber -> {
+                        statusText.text = "Status: Waiting for login"
+                        loginButton.text = "Login"
+                        loginButton.isEnabled = true
+                        loginButton.setOnClickListener {
+                            showPhoneNumberDialog()
+                        }
+                    }
+                    is AuthState.WaitCode -> {
+                        statusText.text = "Status: Enter Code"
+                        loginButton.text = "Enter Code"
+                        loginButton.isEnabled = true
+                        loginButton.setOnClickListener {
+                            showCodeDialog()
+                        }
+                    }
+                    is AuthState.WaitPassword -> {
+                        statusText.text = "Status: Enter Password (2FA)"
+                        loginButton.text = "Enter Password"
+                        loginButton.isEnabled = true
+                        loginButton.setOnClickListener {
+                            showPasswordDialog()
+                        }
+                    }
+                    is AuthState.LoggedIn -> {
+                        statusText.text = "Status: Connected to Telegram"
+                        loginButton.text = "Connected"
+                        loginButton.isEnabled = false
+                    }
+                    is AuthState.LoggingOut -> {
+                        statusText.text = "Status: Logging out..."
+                        loginButton.isEnabled = false
+                    }
+                    is AuthState.Closed -> {
+                        statusText.text = "Status: Client Closed"
+                    }
+                }
+            }
+        }
+
         uploadButton.setOnClickListener {
+            if (TelegramClient.authState.value !is AuthState.LoggedIn) {
+                 Toast.makeText(this, "Please login to Telegram first", Toast.LENGTH_SHORT).show()
+                 return@setOnClickListener
+            }
             pickFile.launch(arrayOf("*/*"))
         }
 
-<<<<<<< codex/create-android-apk-for-kaustav-cloud-storage-6s1s6r
-        refreshList()
-    }
-
-    private fun refreshList() {
-        val formatted = if (uploadedFiles.isEmpty()) {
-            "No uploads yet. Files are not stored offline; they are sent to Telegram Saved Messages."
-        } else {
-            uploadedFiles.joinToString("\n") { "• $it" }
-=======
         lifecycleScope.launch {
             refreshList()
         }
     }
 
-    private suspend fun saveFile(uri: Uri) {
+    private fun showPhoneNumberDialog() {
+        val input = EditText(this)
+        input.inputType = InputType.TYPE_CLASS_PHONE
+        AlertDialog.Builder(this)
+            .setTitle("Enter Phone Number")
+            .setMessage("Please enter your number in international format (e.g. +123456789)")
+            .setView(input)
+            .setPositiveButton("Submit") { _, _ ->
+                TelegramClient.sendPhoneNumber(input.text.toString())
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showCodeDialog() {
+        val input = EditText(this)
+        input.inputType = InputType.TYPE_CLASS_NUMBER
+        AlertDialog.Builder(this)
+            .setTitle("Enter Code")
+            .setMessage("Please enter the code you received on Telegram")
+            .setView(input)
+            .setPositiveButton("Submit") { _, _ ->
+                TelegramClient.checkCode(input.text.toString())
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showPasswordDialog() {
+        val input = EditText(this)
+        input.inputType = InputType.TYPE_TEXT_VARIATION_PASSWORD
+        AlertDialog.Builder(this)
+            .setTitle("Enter Password")
+            .setMessage("Please enter your 2FA password")
+            .setView(input)
+            .setPositiveButton("Submit") { _, _ ->
+                TelegramClient.checkPassword(input.text.toString())
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private suspend fun saveAndUploadFile(uri: Uri) {
         val fileName = FileUtils.displayName(contentResolver, uri) ?: "unknown"
         val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
-        val bytes = FileUtils.readBytes(contentResolver, uri)
         val localFile = File(filesDir, fileName)
+
         withContext(Dispatchers.IO) {
-            localFile.outputStream().use { it.write(bytes) }
+            FileUtils.copyTo(contentResolver, uri, localFile)
+            val size = localFile.length()
+
+            // Upload to Telegram
+            TelegramClient.uploadFile(localFile.absolutePath) { success ->
+                 runOnUiThread {
+                     val msg = if (success) "Uploading to Saved Messages..." else "Upload failed (check logs)"
+                     Toast.makeText(this@MainActivity, msg, Toast.LENGTH_SHORT).show()
+                 }
+            }
+
             database.storedFileDao().insert(
                 StoredFileEntity(
                     displayName = fileName,
                     mimeType = mimeType,
-                    sizeBytes = bytes.size.toLong(),
+                    sizeBytes = size,
                     storedPath = localFile.absolutePath,
                     createdAt = System.currentTimeMillis()
                 )
@@ -146,20 +196,7 @@ class MainActivity : AppCompatActivity() {
                     .format(Date(item.createdAt))
                 "${item.displayName}\n${item.mimeType} • ${size} bytes\nSaved: $date"
             }
->>>>>>> main
         }
         filesList.text = formatted
-    }
-
-<<<<<<< codex/create-android-apk-for-kaustav-cloud-storage-6s1s6r
-=======
-    object IntentFlags {
-        const val READ = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
-    }
-
->>>>>>> main
-    companion object {
-        const val TELEGRAM_API_ID = "20110837"
-        const val TELEGRAM_API_HASH = "b9658b136c2b71af2bdb7497649ace5c"
     }
 }
